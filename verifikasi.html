@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#BDE7C9">
+<title>Verifikasi Dokumen · SIM-SARPRAS SMA Triguna 1956</title>
+<meta name="description" content="Cek keaslian dokumen elektronik SIM-SARPRAS SMA Triguna 1956 Jakarta.">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=1.0.0">
+<style>
+  .v-wrap{max-width:720px;margin:0 auto;padding:20px 14px 60px}
+  .v-status{display:flex;align-items:center;gap:16px;padding:20px;border:var(--bw) solid var(--ink);border-radius:20px;box-shadow:var(--sh);margin:18px 0}
+  .v-status .big{width:64px;height:64px;border-radius:50%;border:var(--bw) solid var(--ink);display:grid;place-items:center;background:#fff;flex:none}
+</style>
+</head>
+<body class="admin">
+<main class="v-wrap">
+  <div class="k-brand"><img class="k-logo" src="assets/logo.png" alt="Logo Yayasan Triguna 1956"><div><h1 class="h2">Verifikasi Dokumen</h1><p class="muted" style="margin:0">SIM-SARPRAS · SMA Triguna 1956 Jakarta</p></div></div>
+  <div class="card card-pad" style="margin-top:18px">
+    <form id="f" class="scanrow"><input class="input mono" id="k" placeholder="Kode verifikasi (20 karakter)" autocomplete="off" style="text-transform:uppercase" aria-label="Kode verifikasi"><button class="btn btn-navy" type="submit">Cek</button></form>
+    <p class="help" style="margin:8px 0 0">Pindai QR pada dokumen, atau ketik kode verifikasi yang tercetak di bagian bawah dokumen.</p>
+  </div>
+  <div id="out"></div>
+</main>
+<div class="toasts" role="status" aria-live="polite"></div>
+<script src="js/config.js?v=1.0.0"></script>
+<script src="js/core.js?v=1.0.0"></script>
+<script>
+(function () {
+  var S = SAR, esc = S.esc, ic = S.ic, fmt = S.fmt, out = S.$('#out'), hasil = null;
+  function cek(k) {
+    k = String(k || '').trim().toUpperCase();
+    if (!k) return;
+    S.$('#k').value = k;
+    out.innerHTML = S.skeleton(5);
+    history.replaceState(null, '', '?k=' + encodeURIComponent(k));
+    S.api('public.verifikasi', { k: k }).then(function (r) {
+      if (!r.success) {
+        out.innerHTML = '<div class="v-status" style="background:var(--red-t);border-color:var(--red)"><span class="big">' + ic('x', 'lg') + '</span><div><h2 class="h2">TIDAK DITEMUKAN</h2><p style="margin:4px 0 0">' + esc(r.message) + '</p></div></div>' +
+          '<p class="help">Bila Anda yakin dokumen ini asli, hubungi bagian sarpras sekolah.</p>';
+        return;
+      }
+      var d = hasil = r.data, sah = d.status === 'TERBIT';
+      out.innerHTML = '<div class="v-status ' + (sah ? 'bg-mint' : '') + '" style="' + (sah ? '' : 'background:var(--red-t);border-color:var(--red)') + '"><span class="big">' + ic(sah ? 'shield' : 'alert', 'lg') + '</span>' +
+        '<div><h2 class="h2">' + (sah ? 'DOKUMEN SAH' : 'DOKUMEN DITARIK') + '</h2><p style="margin:4px 0 0">' + (sah ? 'Dokumen ini diterbitkan resmi oleh ' + esc(d.instansi) + '.' : esc(d.catatan || 'Dokumen ini sudah ditarik dan tidak berlaku.')) + '</p></div></div>' +
+        '<div class="card card-pad"><dl class="kv"><dt>Nomor</dt><dd class="mono">' + esc(d.nomor) + '</dd><dt>Jenis</dt><dd>' + esc(d.template || d.jenis) + '</dd><dt>Perihal</dt><dd>' + esc(d.perihal) + '</dd>' +
+        '<dt>Terbit</dt><dd>' + fmt.tglPanjang(d.terbit) + ', ' + fmt.jam(d.terbit) + ' WIB</dd><dt>Instansi</dt><dd>' + esc(d.instansi) + '</dd></dl></div>' +
+        '<h3 class="h3" style="margin:20px 0 10px">Penanda Tangan</h3>' + d.penandatangan.map(function (p) {
+          var disorot = d.slotDicek && d.slotDicek === p.slot;
+          return '<div class="item" style="' + (disorot ? 'background:var(--yellow-t)' : '') + '"><span class="ic" style="background:' + (p.status === 'SETUJU' ? 'var(--mint)' : 'var(--yellow)') + '">' + ic(p.status === 'SETUJU' ? 'check' : 'clock') + '</span>' +
+            '<div class="body"><div class="nm">' + esc(p.nama) + (disorot ? ' <span class="chip">QR ini</span>' : '') + '</div><div class="meta">' + esc(p.label) + (p.jabatan ? ' · ' + esc(p.jabatan) : '') + '</div>' +
+            '<div class="meta">Metode: ' + esc(p.metode) + (p.waktu ? ' · ' + fmt.tglJam(p.waktu) : '') + '</div></div></div>';
+        }).join('') +
+        (d.hashPdf ? '<div class="card card-pad" style="margin-top:20px"><h3 class="h3">Cek keaslian berkas PDF</h3><p class="help">Unggah PDF yang Anda terima. Sidik jari (SHA-256) dihitung di perangkat Anda — berkas tidak dikirim ke mana pun.</p>' +
+          '<input type="file" accept="application/pdf" id="pdf" class="input" style="padding-top:12px"><div id="hashOut" style="margin-top:12px"></div></div>' : '');
+      var inp = S.$('#pdf');
+      if (inp) inp.onchange = function () {
+        var f = inp.files[0]; if (!f) return;
+        f.arrayBuffer().then(function (buf) { return crypto.subtle.digest('SHA-256', buf); }).then(function (h) {
+          var hex = Array.prototype.map.call(new Uint8Array(h), function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+          var cocok = hex === d.hashPdf;
+          S.$('#hashOut').innerHTML = cocok ? '<div class="infobox bg-mint">' + ic('checkc') + '<span>Berkas <b>identik</b> dengan dokumen asli yang diterbitkan.</span></div>'
+            : '<div class="errbox">' + ic('alert') + '<span>Berkas <b>berbeda</b> dari aslinya (mungkin diubah, atau ini versi DOCX/hasil cetak ulang).</span></div>';
+        });
+      };
+    });
+  }
+  S.$('#f').onsubmit = function (e) { e.preventDefault(); cek(S.$('#k').value); };
+  var m = location.search.match(/[?&]k=([^&]+)/);
+  if (m) cek(decodeURIComponent(m[1]));
+})();
+</script>
+</body>
+</html>
