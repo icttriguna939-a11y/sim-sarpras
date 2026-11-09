@@ -1,4 +1,4 @@
-# 📋 PANDUAN INSTALASI — SIM-SARPRAS SMA TRIGUNA 1956
+# 📋 PANDUAN INSTALASI — SIM-SARPRAS SMA TRIGUNA 1956 (v1.0.1)
 
 Aplikasi web untuk mengelola inventaris sarana-prasarana sekolah serta peminjaman dan pengembalian barang dengan scan QR.
 
@@ -106,12 +106,41 @@ Aplikasi web untuk mengelola inventaris sarana-prasarana sekolah serta peminjama
 4. **Pengguna Admin** → tambahkan akun **Admin Sarpras** dan **Kepala Sekolah** (isi Jabatan dan NIP karena tercetak di dokumen).
    Minta Kepala Sekolah masuk sekali lalu mengatur **PIN tanda tangan** di menu *Akun Saya*.
 5. **Kategori & Lokasi** → sesuaikan daftarnya (6 kategori dan 4 lokasi contoh sudah tersedia).
+   - **Tambah Ruang**: satu per satu (nama ruang + gedung/lantai).
+   - **Tambah Banyak Ruang**: ketik satu ruang per baris, misalnya `Lab Fisika ; Gedung B Lt. 2`. Nama yang sudah ada otomatis dilewati.
+   - Ruang atau kategori juga bisa ditambahkan langsung dari form **Tambah Barang** (tombol ＋ di samping pilihan Lokasi/Kategori) dan dari dialog **Pindah Lokasi**.
 6. **Data Peminjam** → **Unduh Template** → isi sheet `SISWA` (NIS, Nama Lengkap, Kelas) dan `GURU` → **Unggah Excel** → periksa pratinjau → **Konfirmasi Impor**.
    Saat kenaikan kelas, unggah file terbaru lalu centang *"Nonaktifkan siswa yang tidak ada di file"*.
-7. **Inventaris** → **Tambah Barang**, atau **Impor Excel** (template ada di dialog impor), atau gunakan **Migrasi Data** (Bagian F).
+7. **Inventaris** → **Tambah Barang**, atau isi lewat Excel (lihat bagian *Template Excel Inventaris* di bawah), atau gunakan **Migrasi Data** (Bagian F).
 8. Pilih barang → **Cetak Label QR** → cetak di kertas stiker A4 → tempel di setiap barang.
 9. **Dokumen → Template** → **Buat 4 Template Contoh**. Lalu uji satu dokumen: buka *Transaksi* → ikon 🖨️ (Bukti Peminjaman).
 10. Uji kios dari HP: Pinjam → pilih nama → scan QR → Simpan. Lalu Kembalikan → scan → pilih kondisi → Konfirmasi.
+
+---
+
+### Template Excel Inventaris
+
+1. **Inventaris → Unduh Template**. Pilihan dropdown di file diambil dari data aplikasi **saat itu juga**. Jadi tambahkan dulu ruang/kategori yang kurang, baru unduh template.
+2. Kolom template:
+
+   | Kolom | Cara isi |
+   |---|---|
+   | Nama Barang \* | ketik |
+   | Tipe \* | **dropdown**: UNIT / STOK |
+   | Kategori \* | **dropdown** (daftar kategori di aplikasi) |
+   | Lokasi / Ruang \* | **dropdown** (daftar ruang di aplikasi) |
+   | Merek / Spesifikasi | ketik |
+   | Satuan | **dropdown**: sama dengan form Tambah Barang (unit, buah, set, …) |
+   | Jumlah \* | angka ≥ 1 |
+   | Kondisi | **dropdown**: Baik / Rusak |
+   | Sumber Perolehan | **dropdown**: BOS, BOP, Yayasan, Komite, Hibah, Swadaya, Lainnya |
+   | Tahun Perolehan | angka 4 digit |
+   | Keterangan | ketik |
+
+   Kolom **Kode Barang, Tersedia, Status, Bisa Dipinjam, dan Dipinjam (kali) tidak ada** di template. **Kode barang dibuat otomatis saat file diunggah.** Tipe UNIT berjumlah 3 menghasilkan 3 kode (3 label QR). Tipe STOK menghasilkan 1 kode berisi jumlahnya.
+3. **Inventaris → Impor Excel** → periksa pratinjau → **Konfirmasi Impor**.
+   Bila ada nilai yang tidak sama dengan daftar di aplikasi (misalnya hasil copy-paste yang salah ketik), barisnya **ditolak dengan pesan jelas** dan tidak membuat kategori/ruang baru secara diam-diam.
+4. Tombol **Unduh Data** menghasilkan *laporan* seluruh inventaris (berisi kode, status, dll.). Itu laporan, **bukan template isian**.
 
 ---
 
@@ -191,14 +220,16 @@ Tunggu 1–2 menit, lalu tekan **Ctrl+Shift+R**.
 
 ## K. Hasil pengujian sebelum diserahkan
 
-- **Backend:** 94 skenario di simulator Apps Script (Node.js) — semua lulus.
+- **Backend:** 101 skenario di simulator Apps Script (Node.js) — semua lulus.
   Mencakup: login & penguncian, token, peran, pinjam/kembali (termasuk stok sebagian dan barang dipinjam dua orang), penolakan peminjaman ganda, koreksi admin, impor Excel idempoten (NIS `00123` utuh), kenaikan kelas, migrasi dry-run/import/delta, alur PIN dokumen, pengembalian nomor saat terbit gagal, cache berversi, dan QR PNG (didekode ulang dengan OpenCV).
-- **Browser:** 44 skenario di Chromium (HP 390 px, tablet 1280 px, desktop 1440 px) — semua lulus, tanpa galat JavaScript.
+- **Browser:** 61 skenario di Chromium (HP 390 px, tablet 1280 px, desktop 1440 px) — semua lulus, tanpa galat JavaScript.
+  Revisi v1.0.1 diuji ujung ke ujung: tambah banyak ruang → ＋ ruang dari form → unduh template → isi di Excel (openpyxl) → unggah → kode otomatis. File template juga dibuka di LibreOffice, dan ke-9 aturan dropdown/validasinya tetap terbaca.
 
 **Yang belum bisa diuji di luar akun Google Anda** (wajib dicek sekali setelah instalasi):
 1. Render dokumen sungguhan di Google Docs/Sheets (template contoh, ekspor PDF/DOCX/XLSX).
 2. Kamera HP dan scanner USB di perangkat sekolah.
-3. Unduh Excel. Pustaka SheetJS dan html5-qrcode dimuat dari CDN saat dibutuhkan, jadi perangkat perlu koneksi internet.
+3. Dropdown template di Microsoft Excel di komputer sekolah (sudah diuji di LibreOffice dan dibaca openpyxl).
+   Sejak v1.0.1, unduh/baca Excel `.xlsx` tidak lagi bergantung pada CDN. Hanya kamera (html5-qrcode) dan file lama `.xls/.csv` yang masih memuat pustaka dari internet.
 
 ## L. Perbedaan dari PRD (keputusan teknis)
 
@@ -206,3 +237,16 @@ Tunggu 1–2 menit, lalu tekan **Ctrl+Shift+R**.
 - **Daftar nama peminjam (nama + kelas, tanpa NIS/NIP) dikirim ke perangkat kios** agar saran nama muncul seketika. PRD semula membatasi maksimal 10 hasil per pencarian ke server.
 - **Peminjaman setelah jam batas:** batas kembali menjadi pukul 23.59 hari itu, supaya tidak langsung ditandai terlambat.
 - **Barang STOK yang dikembalikan rusak** tidak menambah stok tersedia. Admin menyesuaikan jumlah stok setelah barang diperiksa.
+
+---
+
+## M. Riwayat versi
+
+| Versi | Perubahan |
+|---|---|
+| 1.0.1 | Tambah ruang manual (satu/banyak sekaligus, ＋ dari form barang & pindah lokasi) · Template Excel inventaris dengan dropdown Tipe/Kategori/Lokasi/Satuan/Kondisi/Sumber sesuai data aplikasi · Kolom Kode/Tersedia/Status/Bisa Dipinjam/Dipinjam dihapus dari template · Kode barang otomatis saat unggah · Impor template menolak salah ketik · Satuan & Sumber di form menjadi dropdown · Excel .xlsx dibaca/ditulis tanpa CDN |
+| 1.0.0 | Rilis pertama |
+
+**Cara memperbarui dari 1.0.0 ke 1.0.1** (data aman, tidak ada sheet/kolom yang berubah):
+1. **Backend:** ganti isi `Kode.gs`, `Data.gs`, `Migrasi.gs` → Simpan → **Deploy → Kelola deployment → ✏️ Edit → Versi baru → Deploy**. `DocEngine.gs`, `QrLib.gs`, dan `appsscript.json` tidak berubah.
+2. **Frontend:** ekstrak ZIP v1.0.1 lalu salin & timpa semua isinya ke `C:\sim-sarpras`. ZIP ini sengaja **tidak berisi `js\config.js`**, sehingga file Anda yang sudah berisi URL server tetap aman. Lalu jalankan `git add .` → `git commit -m "v1.0.1"` → `git push`, dan tekan Ctrl+Shift+R di browser.

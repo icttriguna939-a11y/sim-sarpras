@@ -112,32 +112,34 @@
   /* ---------- Excel (SheetJS dimuat saat dibutuhkan) ---------- */
   var Excel = {
     lib: function () { return SAR.loadScript(XLSX_LIB); },
-    /** sheets: [{ name, rows:[{kolom:nilai}] | aoa:[[...]], widths:[] }] */
+    /** sheets: [{ name, rows:[{kolom:nilai}] | aoa:[[...]], widths:[], textCols:[] }] — ditulis tanpa pustaka luar (XlsxTemplate). */
     unduh: function (namaFile, sheets) {
-      return Excel.lib().then(function () {
-        var X = W.XLSX, wb = X.utils.book_new();
-        sheets.forEach(function (s) {
-          var ws = s.aoa ? X.utils.aoa_to_sheet(s.aoa) : X.utils.json_to_sheet(s.rows && s.rows.length ? s.rows : [{ '(kosong)': '' }]);
-          if (s.widths) ws['!cols'] = s.widths.map(function (w) { return { wch: w }; });
-          if (s.textCols && ws['!ref']) {                 // paksa format teks (NIS/NIP agar 0 di depan aman)
-            var R = X.utils.decode_range(ws['!ref']);
-            s.textCols.forEach(function (c) { for (var r = R.s.r; r <= R.e.r + 300; r++) { var a = X.utils.encode_cell({ r: r, c: c }); if (!ws[a]) ws[a] = { t: 's', v: '' }; ws[a].z = '@'; } });
-            ws['!ref'] = X.utils.encode_range({ s: R.s, e: { r: R.e.r + 300, c: R.e.c } });
-          }
-          X.utils.book_append_sheet(wb, ws, String(s.name).slice(0, 31));
+      return Promise.resolve().then(function () {
+        var conv = sheets.map(function (s) {
+          var header, rows;
+          if (s.aoa) { header = s.aoa[0] || []; rows = s.aoa.slice(1); }
+          else { var list = s.rows || []; header = list.length ? Object.keys(list[0]) : ['(kosong)']; rows = list.map(function (r) { return header.map(function (h) { return r[h] == null ? '' : r[h]; }); }); }
+          return { name: String(s.name).slice(0, 31), header: header, rows: rows, widths: s.widths || header.map(function () { return 16; }), textCols: s.textCols || [], freeze: true, wrap: s.wrap };
         });
-        X.writeFile(wb, namaFile);
+        return W.XlsxTemplate.unduh(namaFile, conv);
       });
     },
-    /** Baca file → { namaSheet: [ {header:nilai} ] } (nilai sebagai teks tampilan → 0 di depan tetap). */
+    /** Baca file → { namaSheet: [ {header:nilai} ] } (nilai teks → 0 di depan tetap).
+        .xlsx dibaca langsung di browser; .xls/.csv memakai SheetJS (dimuat dari CDN). */
     baca: function (file) {
-      return Excel.lib().then(function () {
-        return file.arrayBuffer().then(function (buf) {
+      return file.arrayBuffer().then(function (buf) {
+        if (/\.xlsx$/i.test(file.name) && W.DecompressionStream && W.XlsxTemplate) {
+          return W.XlsxTemplate.baca(buf).catch(function () { return bacaSheetJS(buf); });
+        }
+        return bacaSheetJS(buf);
+      });
+      function bacaSheetJS(buf) {
+        return Excel.lib().then(function () {
           var X = W.XLSX, wb = X.read(buf, { type: 'array', cellDates: true }), out = {};
           wb.SheetNames.forEach(function (n) { out[n] = X.utils.sheet_to_json(wb.Sheets[n], { defval: '', raw: false }); });
           return out;
         });
-      });
+      }
     }
   };
 

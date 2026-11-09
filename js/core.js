@@ -243,7 +243,10 @@
     ov.addEventListener('mousedown', function (e) { if (e.target === ov && !opt.sticky) api_.close(); });
     box.querySelector('[data-x]').onclick = api_.close;
     _modalStack.push(api_);
-    setTimeout(function () { var f = box.querySelector('[autofocus],input:not([type=hidden]),select,textarea'); if (f && !opt.noFocus) f.focus(); }, 30);
+    setTimeout(function () {                         // fokus awal — jangan merebut fokus bila pengguna sudah mengetik di kolom lain
+      if (opt.noFocus || box.contains(document.activeElement)) return;
+      var f = box.querySelector('[autofocus],input:not([type=hidden]),select,textarea'); if (f) f.focus();
+    }, 30);
     return api_;
   }
 

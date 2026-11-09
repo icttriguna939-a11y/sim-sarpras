@@ -397,10 +397,42 @@
   };
 
   // ============ INVENTARIS ============
-  A.master = function (cb) { return S.Store.load('master.list', {}, { maxAge: 120000, onData: cb }); };
+  /** Pilihan baku — dipakai form Tambah Barang DAN dropdown template Excel (agar isian selalu sama). */
+  A.TIPE = [{ v: 'UNIT', l: 'UNIT' }, { v: 'STOK', l: 'STOK' }];
+  A.SATUAN = ['unit', 'buah', 'set', 'pasang', 'lembar', 'rim', 'pak', 'box', 'roll', 'meter'];
+  A.KONDISI = [{ v: 'BAIK', l: 'Baik' }, { v: 'RUSAK', l: 'Rusak' }];
+  A.SUMBER = ['BOS', 'BOP', 'Yayasan', 'Komite', 'Hibah', 'Swadaya', 'Lainnya'];
+  A.master = function (cb, paksa) { return S.Store.load('master.list', {}, { maxAge: 120000, force: paksa, onData: cb }); };
+  /** Opsi select yang tetap memuat nilai lama di luar daftar baku (data hasil migrasi). */
+  A.opsiBaku = function (daftar, pilih) {
+    var arr = daftar.slice();
+    if (pilih && arr.map(function (o) { return String(o).toLowerCase(); }).indexOf(String(pilih).toLowerCase()) < 0) arr.push(pilih);
+    return A.opsi(arr, pilih);
+  };
+  /** Tambah ruang/lokasi atau kategori langsung dari form lain. done(idBaru). */
+  A.tambahMasterCepat = function (jenis, done) {
+    var lok = jenis === 'lokasi';
+    var m = S.modal({ title: lok ? 'Tambah Ruang / Lokasi Baru' : 'Tambah Kategori Baru', body:
+      (lok ? '' : '<div class="field"><label>Kode singkat <span class="req">*</span></label><input class="input" id="qk" maxlength="4" style="text-transform:uppercase" placeholder="2–4 huruf, mis. KMR"><div class="help">Dipakai di kode barang, mis. SAR-<b>KMR</b>-0001.</div></div>') +
+      '<div class="field"><label>Nama ' + (lok ? 'ruang / lokasi' : 'kategori') + ' <span class="req">*</span></label><input class="input" id="qn" placeholder="' + (lok ? 'Mis. Lab Fisika, Ruang Kelas XI IPA 3' : 'Mis. Kamera & Dokumentasi') + '"></div>' +
+      (lok ? '<div class="field"><label>Gedung / lantai</label><input class="input" id="qg" placeholder="Mis. Gedung B Lt. 2"></div>' : ''),
+      foot: '<button class="btn" data-c>Batal</button><button class="btn btn-navy" data-s>' + ic('plus', 'sm') + 'Tambahkan</button>' });
+    m.el.querySelector('[data-c]').onclick = m.close;
+    function simpan() {
+      var b = m.el.querySelector('[data-s]');
+      A.simpanLalu('master.save', { jenis: jenis, nama: $('#qn', m.el).value, kode: lok ? undefined : $('#qk', m.el).value.toUpperCase(), gedung: lok ? $('#qg', m.el).value : undefined, aktif: true },
+        b, ['master', 'inventaris', 'public']).then(function (r) {
+        if (!r.success) return;
+        m.close();
+        A.master(function () {}, true).then(function () { if (done) done(r.data.id); });
+      });
+    }
+    m.el.querySelector('[data-s]').onclick = simpan;
+    $$('input', m.el).forEach(function (i) { i.addEventListener('keydown', function (e) { if (e.key === 'Enter') simpan(); }); });
+  };
   A.pages.inventaris = function (el, r) {
     var st = { q: r.q.q || '', kat: '', lok: '', status: r.q.status || '', tipe: '', sel: {} }, data = null, master = null, adm = A.isAdm();
-    el.innerHTML = A.head('Inventaris Barang', 'Seluruh aset &amp; perlengkapan sekolah.', adm ? '<button class="btn" id="imp">' + ic('upload') + 'Impor Excel</button><button class="btn" id="xls">' + ic('excel') + 'Unduh Excel</button><button class="btn btn-yellow" id="add">' + ic('plus') + 'Tambah Barang</button>' : '<button class="btn" id="xls">' + ic('excel') + 'Unduh Excel</button>') +
+    el.innerHTML = A.head('Inventaris Barang', 'Seluruh aset &amp; perlengkapan sekolah.', adm ? '<button class="btn" id="tpl" title="Template isian dengan pilihan dropdown">' + ic('download') + 'Unduh Template</button><button class="btn" id="imp">' + ic('upload') + 'Impor Excel</button><button class="btn" id="xls" title="Laporan seluruh data inventaris">' + ic('excel') + 'Unduh Data</button><button class="btn btn-yellow" id="add">' + ic('plus') + 'Tambah Barang</button>' : '<button class="btn" id="xls">' + ic('excel') + 'Unduh Data</button>') +
       '<div id="chips" class="mini-stats"></div><div class="filters"><input class="input" id="fq" placeholder="Cari nama / kode / merek" value="' + esc(st.q) + '" style="flex:2 1 220px">' +
       '<select class="select" id="fc"><option value="">Semua kategori</option></select><select class="select" id="fl"><option value="">Semua lokasi</option></select>' +
       '<select class="select" id="fs">' + A.opsi([{ v: '', l: 'Semua status' }, { v: 'TERSEDIA', l: 'Tersedia' }, { v: 'DIPINJAM', l: 'Dipinjam' }, { v: 'RUSAK', l: 'Rusak' }, { v: 'NONAKTIF', l: 'Nonaktif' }], st.status) + '</select>' +
@@ -450,9 +482,12 @@
         if (a === 'x') { st.sel = {}; gambar(); return; }
         if (a === 'label') { try { sessionStorage.setItem('label_sel', JSON.stringify(ids)); } catch (e) {} location.hash = '#/label'; return; }
         if (a === 'PINDAH') {
-          var m = S.modal({ title: 'Pindah ' + ids.length + ' barang', body: '<div class="field"><label>Lokasi tujuan</label><select class="select" id="tuj">' + A.opsi(master.lokasi.filter(function (l) { return l.aktif; }).map(function (l) { return { v: l.id, l: l.nama }; })) + '</select></div>',
+          var opsLok = function (pilih) { return A.opsi(master.lokasi.filter(function (l) { return l.aktif; }).map(function (l) { return { v: l.id, l: l.nama + (l.gedung ? ' — ' + l.gedung : '') }; }), pilih); };
+          var m = S.modal({ title: 'Pindah ' + ids.length + ' barang', body: '<div class="field"><label>Lokasi / ruang tujuan</label><div class="scanrow"><select class="select" id="tuj">' + opsLok() + '</select>' +
+            '<button class="btn" type="button" id="tujBaru" title="Tambah ruang baru">' + ic('plus', 'sm') + 'Ruang</button></div></div>',
             foot: '<button class="btn" data-c>Batal</button><button class="btn btn-navy" data-o>Pindahkan</button>' });
           m.el.querySelector('[data-c]').onclick = m.close;
+          $('#tujBaru', m.el).onclick = function () { A.tambahMasterCepat('lokasi', function (id) { A.master(function (m2) { master = m2; isiFilter(); $('#tuj', m.el).innerHTML = opsLok(id); }); }); };
           m.el.querySelector('[data-o]').onclick = function () { A.simpanLalu('inventaris.setStatus', { barangIds: ids, aksi: 'PINDAH', lokasiId: $('#tuj', m.el).value }, this, ['inventaris', 'master', 'public', 'dashboard']).then(function (r) { if (r.success) { m.close(); st.sel = {}; muat(true); } }); };
           return;
         }
@@ -472,7 +507,8 @@
     var deb; $('#fq', el).oninput = function () { var v = this.value; clearTimeout(deb); deb = setTimeout(function () { st.q = v; gambar(); }, 120); };
     [['#fc', 'kat'], ['#fl', 'lok'], ['#fs', 'status'], ['#ft', 'tipe']].forEach(function (p) { $(p[0], el).onchange = function () { st[p[1]] = this.value; gambar(); }; });
     if ($('#add', el)) $('#add', el).onclick = function () { A.formBarang(null, function () { muat(true); }); };
-    if ($('#imp', el)) $('#imp', el).onclick = function () { A.imporExcel('INVENTARIS', function () { muat(true); }); };
+    if ($('#imp', el)) $('#imp', el).onclick = function () { A.imporExcel('INVENTARIS', function () { muat(true); A.master(function (m2) { master = m2; isiFilter(); }, true); }); };
+    if ($('#tpl', el)) $('#tpl', el).onclick = function () { S.busy(this, A.unduhTemplate('INVENTARIS'), 'Menyiapkan…'); };
     $('#xls', el).onclick = function () {
       var rows = (data ? filter() : []).map(function (x) { return { 'Kode Barang': x.kode, 'Nama Barang': x.nama, 'Tipe': x.tipe, 'Kategori': x.kategori, 'Lokasi': x.lokasi, 'Merek/Spesifikasi': x.merek, 'Satuan': x.satuan,
         'Jumlah': x.total, 'Tersedia': x.tersedia, 'Kondisi': x.kondisi, 'Status': x.status, 'Bisa Dipinjam': x.bisaDipinjam ? 'Ya' : 'Tidak', 'Sumber Perolehan': x.sumber, 'Tahun': x.tahun, 'Keterangan': x.keterangan, 'Dipinjam (kali)': x.dipinjamKali }; });
@@ -493,27 +529,34 @@
         '<div class="field"><label>Nama barang <span class="req">*</span></label><input class="input" id="nm" value="' + esc(x ? x.nama : '') + '" placeholder="Mis. Proyektor Epson EB-X51"></div>' +
         (ubah ? '' : '<div class="flabel" style="margin-bottom:8px">Tipe pencatatan</div><div class="grid-2" style="margin-bottom:14px"><button class="choice" style="min-height:80px" data-tp="UNIT" aria-pressed="' + (tipe === 'UNIT') + '">' + ic('box') + 'UNIT · per buah<span class="help">1 QR per barang (laptop, proyektor)</span></button>' +
           '<button class="choice c-pink" style="min-height:80px" data-tp="STOK" aria-pressed="' + (tipe === 'STOK') + '">' + ic('layers') + 'STOK · jumlah banyak<span class="help">1 QR per jenis (bola, kursi)</span></button></div>') +
-        '<div class="grid-2"><div class="field"><label>Kategori <span class="req">*</span></label><select class="select" id="kt">' + A.opsi(m.kategori.filter(function (k) { return k.aktif || (x && x.kategoriId === k.id); }).map(function (k) { return { v: k.id, l: k.nama + ' (' + k.kode + ')' }; }), x ? x.kategoriId : '') + '</select></div>' +
-        '<div class="field"><label>Lokasi <span class="req">*</span></label><select class="select" id="lk">' + A.opsi(m.lokasi.filter(function (k) { return k.aktif || (x && x.lokasiId === k.id); }).map(function (k) { return { v: k.id, l: k.nama }; }), x ? x.lokasiId : '') + '</select></div></div>' +
-        '<div class="grid-2"><div class="field"><label>Merek / spesifikasi</label><input class="input" id="mr" value="' + esc(x ? x.merek : '') + '"></div><div class="field"><label>Satuan</label><input class="input" id="st" value="' + esc(x ? x.satuan : 'unit') + '" list="satuanList"><datalist id="satuanList"><option>unit</option><option>buah</option><option>set</option><option>pasang</option><option>lembar</option></datalist></div></div></div></div>' +
+        '<div class="grid-2"><div class="field"><label>Kategori <span class="req">*</span></label><div class="scanrow"><select class="select" id="kt"></select><button class="btn btn-icon" type="button" id="ktBaru" title="Tambah kategori baru" aria-label="Tambah kategori baru">' + ic('plus') + '</button></div></div>' +
+        '<div class="field"><label>Lokasi / ruang <span class="req">*</span></label><div class="scanrow"><select class="select" id="lk"></select><button class="btn btn-icon" type="button" id="lkBaru" title="Tambah ruang baru" aria-label="Tambah ruang baru">' + ic('plus') + '</button></div><div class="help">Ruang belum ada? Klik ＋ untuk menambahkan.</div></div></div>' +
+        '<div class="grid-2"><div class="field"><label>Merek / spesifikasi</label><input class="input" id="mr" value="' + esc(x ? x.merek : '') + '"></div><div class="field"><label>Satuan</label><select class="select" id="st">' + A.opsiBaku(A.SATUAN, x ? x.satuan : 'unit') + '</select></div></div></div></div>' +
         '<div class="card" style="box-shadow:none;margin-bottom:16px"><div class="card-head bg-yellow"><h3>Jumlah</h3></div><div class="card-pad"><div class="field"><label id="jlLbl">' + (ubah ? (tipe === 'STOK' ? 'Jumlah stok' : 'Jumlah') : 'Jumlah unit yang ditambahkan') + '</label>' +
         '<input class="input" type="number" min="1" id="jl" value="' + (x ? x.total : 1) + '"' + (ubah && tipe === 'UNIT' ? ' disabled' : '') + '></div><div class="help" id="jlHelp"></div></div></div>' +
         '<div class="card" style="box-shadow:none"><div class="card-head bg-mint"><h3>Status &amp; Perolehan</h3></div><div class="card-pad"><div class="grid-2"><div class="field"><label>Kondisi</label><select class="select" id="kd">' + A.opsi([{ v: 'BAIK', l: 'Baik' }, { v: 'RUSAK', l: 'Rusak' }], x ? x.kondisi : 'BAIK') + '</select></div>' +
         '<div class="field"><label>Bisa dipinjam</label><select class="select" id="bd">' + A.opsi([{ v: '1', l: 'Ya, tampil di kios' }, { v: '0', l: 'Tidak (aset tetap)' }], x && !x.bisaDipinjam ? '0' : '1') + '</select></div></div>' +
-        '<div class="grid-2"><div class="field"><label>Sumber perolehan</label><input class="input" id="sb" list="sumberList" value="' + esc(x ? x.sumber : '') + '"><datalist id="sumberList"><option>BOS</option><option>Yayasan</option><option>Hibah</option><option>Komite</option><option>Lainnya</option></datalist></div>' +
+        '<div class="grid-2"><div class="field"><label>Sumber perolehan</label><select class="select" id="sb">' + A.opsi(A.SUMBER.concat(x && x.sumber && A.SUMBER.indexOf(x.sumber) < 0 ? [x.sumber] : []), x ? x.sumber : '', '— pilih —') + '</select></div>' +
         '<div class="field"><label>Tahun</label><input class="input" id="th" inputmode="numeric" maxlength="4" value="' + esc(x ? x.tahun : '') + '"></div></div>' +
         '<div class="field"><label>Keterangan</label><textarea class="textarea" id="ke">' + esc(x ? x.keterangan : '') + '</textarea></div></div></div></div>' +
         '<div class="card card-pad" style="position:sticky;top:0"><div class="flabel">Pratinjau kode</div><div class="qrbox" style="margin:12px 0" id="qrPrev"></div><div class="code" id="kdPrev" style="text-align:center"></div><p class="help" style="text-align:center">Kode dibuat otomatis dan tidak berubah walau lokasi dipindah.</p></div></div>',
         foot: '<button class="btn" data-c>Batal</button>' + (ubah ? '' : '<button class="btn" data-s="label">' + ic('qr', 'sm') + 'Simpan &amp; Cetak Label</button>') + '<button class="btn btn-navy" data-s="1">' + ic('check', 'sm') + 'Simpan</button>' });
       var e = md.el;
+      function isiMaster(pilihKat, pilihLok) {
+        $('#kt', e).innerHTML = A.opsi(m.kategori.filter(function (k) { return k.aktif || (x && x.kategoriId === k.id); }).map(function (k) { return { v: k.id, l: k.nama + ' (' + k.kode + ')' }; }), pilihKat);
+        $('#lk', e).innerHTML = A.opsi(m.lokasi.filter(function (k) { return k.aktif || (x && x.lokasiId === k.id); }).map(function (k) { return { v: k.id, l: k.nama + (k.gedung ? ' — ' + k.gedung : '') }; }), pilihLok);
+      }
+      isiMaster(x ? x.kategoriId : '', x ? x.lokasiId : '');
+      $('#ktBaru', e).onclick = function () { A.tambahMasterCepat('kategori', function (id) { A.master(function (m2) { m = m2; isiMaster(id, $('#lk', e).value); prev(); }); }); };
+      $('#lkBaru', e).onclick = function () { A.tambahMasterCepat('lokasi', function (id) { A.master(function (m2) { m = m2; isiMaster($('#kt', e).value, id); }); }); };
       function prev() {
         var kat = m.kategori.filter(function (k) { return k.id === $('#kt', e).value; })[0], kode = x ? x.kode : (A.settings.PREFIX_KODE || 'SAR') + '-' + (kat ? kat.kode : 'XXX') + '-####';
         $('#kdPrev', e).textContent = kode; $('#qrPrev', e).innerHTML = qrSvg(x ? x.kode : kode.replace('####', '0001'));
         var j = Number($('#jl', e).value) || 1;
         $('#jlHelp', e).textContent = ubah ? (tipe === 'UNIT' ? 'Barang UNIT selalu berjumlah 1 per kode.' : 'Tersedia sekarang: ' + x.tersedia) : tipe === 'UNIT' ? (j > 1 ? 'Akan dibuat ' + j + ' kode berurutan.' : 'Akan dibuat 1 kode.') : '1 kode untuk ' + j + ' ' + ($('#st', e).value || 'buah') + '.';
       }
-      $$('[data-tp]', e).forEach(function (b) { b.onclick = function () { tipe = b.dataset.tp; $$('[data-tp]', e).forEach(function (y) { y.setAttribute('aria-pressed', y === b); }); $('#jlLbl', e).textContent = tipe === 'UNIT' ? 'Jumlah unit yang ditambahkan' : 'Jumlah stok'; if (tipe === 'STOK' && $('#st', e).value === 'unit') $('#st', e).value = 'buah'; prev(); }; });
-      ['#kt', '#jl', '#st'].forEach(function (s) { $(s, e).addEventListener('input', prev); });
+      $$('[data-tp]', e).forEach(function (b) { b.onclick = function () { tipe = b.dataset.tp; $$('[data-tp]', e).forEach(function (y) { y.setAttribute('aria-pressed', y === b); }); $('#jlLbl', e).textContent = tipe === 'UNIT' ? 'Jumlah unit yang ditambahkan' : 'Jumlah stok'; if (tipe === 'STOK' && $('#st', e).value === 'unit') $('#st', e).value = 'buah'; if (tipe === 'UNIT' && $('#st', e).value === 'buah') $('#st', e).value = 'unit'; prev(); }; });
+      ['#kt', '#jl', '#st'].forEach(function (s) { $(s, e).addEventListener('input', prev); $(s, e).addEventListener('change', prev); });
       prev();
       e.querySelector('[data-c]').onclick = md.close;
       $$('[data-s]', e).forEach(function (btn) { btn.onclick = function () {

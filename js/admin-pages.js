@@ -10,11 +10,14 @@
   // ============ KATEGORI & LOKASI ============
   A.pages.master = function (el, r) {
     var tab = r.q.tab || 'kategori';
-    el.innerHTML = A.head('Kategori & Lokasi', 'Kode singkat kategori dipakai di kode barang (mis. SAR-<b>ELK</b>-0001).', '<button class="btn btn-yellow" id="add">' + ic('plus') + 'Tambah</button>') +
+    el.innerHTML = A.head('Kategori & Lokasi', 'Kode singkat kategori dipakai di kode barang (mis. SAR-<b>ELK</b>-0001). Ruang yang ditambahkan di sini langsung muncul di form barang &amp; template Excel.',
+      '<button class="btn" id="addBanyak">' + ic('list') + 'Tambah Banyak Ruang</button><button class="btn btn-yellow" id="add">' + ic('plus') + '<span id="addLbl">Tambah</span></button>') +
       '<div class="tabs"><button data-tab="kategori" aria-selected="' + (tab === 'kategori') + '">Kategori</button><button data-tab="lokasi" aria-selected="' + (tab === 'lokasi') + '">Lokasi / Ruangan</button></div><div id="tbl">' + S.skeleton(5) + '</div>' +
       '<p class="help" style="margin-top:12px">' + ic('info', 'sm') + ' Kategori/lokasi yang dipakai barang hanya bisa dinonaktifkan, tidak dihapus.</p>';
     var data = null;
     function gambar() {
+      $('#addLbl', el).textContent = tab === 'kategori' ? 'Tambah Kategori' : 'Tambah Ruang';
+      $('#addBanyak', el).classList.toggle('hidden', tab !== 'lokasi');
       if (tab === 'kategori') A.tabel($('#tbl', el), data.kategori, [
         { t: 'Kode', f: function (x) { return '<span class="chip">' + esc(x.kode) + '</span>'; } }, { t: 'Nama Kategori', f: function (x) { return '<b>' + esc(x.nama) + '</b>'; } },
         { t: 'Jumlah Barang', cls: 'num', f: function (x) { return x.jumlah; } }, { t: 'Status', f: function (x) { return S.badge(x.aktif ? 'TERSEDIA' : 'NONAKTIF', x.aktif ? 'Aktif' : 'Nonaktif'); } },
@@ -45,6 +48,34 @@
     function muat(f) { S.Store.load('master.list', {}, { maxAge: 60000, force: f, onData: function (d) { data = d; gambar(); } }); }
     $$('[data-tab]', el).forEach(function (b) { b.onclick = function () { tab = b.dataset.tab; $$('[data-tab]', el).forEach(function (y) { y.setAttribute('aria-selected', y === b); }); if (data) gambar(); }; });
     $('#add', el).onclick = function () { form(null); };
+    /** Tambah banyak ruang sekaligus: satu ruang per baris, format "Nama Ruang ; Gedung". Nama yang sudah ada dilewati. */
+    $('#addBanyak', el).onclick = function () {
+      var m = S.modal({ title: 'Tambah Banyak Ruang', body: '<p class="help" style="margin-top:0">Tulis <b>satu ruang per baris</b>. Gedung boleh ditambahkan setelah tanda titik koma ( ; ).</p>' +
+        '<textarea class="textarea" id="ruangList" style="min-height:220px;font-family:var(--f-mono)" placeholder="Lab Fisika ; Gedung B Lt. 2\nLab Kimia ; Gedung B Lt. 2\nRuang Kelas X IPA 1\nRuang OSIS ; Gedung A"></textarea>' +
+        '<div class="help" id="ruangInfo" style="margin-top:6px">0 ruang</div>',
+        foot: '<button class="btn" data-c>Batal</button><button class="btn btn-navy" data-s disabled>' + ic('plus', 'sm') + 'Tambahkan</button>' });
+      var ta = $('#ruangList', m.el), btn = m.el.querySelector('[data-s]');
+      function baris() {
+        var lihat = {};
+        return ta.value.split(/\r?\n/).map(function (l) { var p = l.split(';'); return { namaLokasi: (p[0] || '').replace(/\s+/g, ' ').trim(), gedung: (p.slice(1).join(';') || '').trim() }; })
+          .filter(function (r) { var k = r.namaLokasi.toLowerCase(); if (!k || lihat[k]) return false; lihat[k] = 1; return true; });
+      }
+      ta.oninput = function () {
+        var rows = baris(), ada = {};
+        (data ? data.lokasi : []).forEach(function (l) { ada[l.nama.toLowerCase()] = 1; });
+        var baru = rows.filter(function (r) { return !ada[r.namaLokasi.toLowerCase()]; }).length;
+        $('#ruangInfo', m.el).innerHTML = rows.length + ' ruang · <b>' + baru + ' baru</b>' + (rows.length - baru ? ' · ' + (rows.length - baru) + ' sudah ada (dilewati)' : '');
+        btn.disabled = !baru;
+      };
+      m.el.querySelector('[data-c]').onclick = m.close;
+      btn.onclick = function () {
+        A.simpanLalu('import.rows', { target: 'LOKASI', rows: baris(), overwrite: false }, btn, ['master', 'inventaris', 'public']).then(function (r) {
+          if (!r.success) return;
+          m.close(); S.toast(r.data.inserted + ' ruang ditambahkan' + (r.data.skipped ? ', ' + r.data.skipped + ' sudah ada.' : '.'));
+          tab = 'lokasi'; $$('[data-tab]', el).forEach(function (y) { y.setAttribute('aria-selected', y.dataset.tab === 'lokasi'); }); muat(true);
+        });
+      };
+    };
     muat();
   };
 
@@ -103,25 +134,64 @@
   var TPL = {
     SISWA: { kolom: ['NIS', 'Nama Lengkap', 'Kelas'], contoh: [['00123', 'Ahmad Fauzi', 'XI IPA 2'], ['00124', 'Rina Wulandari', 'X IPA 1']], peta: { nomorInduk: ['nis', 'nisn', 'nomor induk'], nama: ['nama lengkap', 'nama'], kelas: ['kelas', 'rombel'] } },
     GURU: { kolom: ['NIP / Kode Guru', 'Nama Lengkap'], contoh: [['G-001', 'Siti Rahmawati, S.Pd.'], ['196501011990031001', 'Drs. Supriyanto']], peta: { nomorInduk: ['nip / kode guru', 'nip', 'kode guru', 'nuptk'], nama: ['nama lengkap', 'nama'] } },
-    INVENTARIS: { kolom: ['Kode Barang (opsional)', 'Nama Barang', 'Tipe (UNIT/STOK)', 'Kategori', 'Lokasi', 'Merek/Spesifikasi', 'Satuan', 'Jumlah', 'Kondisi (Baik/Rusak)', 'Sumber Perolehan', 'Tahun', 'Keterangan', 'Bisa Dipinjam (Ya/Tidak)'],
-      contoh: [['', 'Proyektor Epson EB-X51', 'UNIT', 'Elektronik', 'Ruang Sarpras', 'Epson EB-X51', 'unit', '2', 'Baik', 'BOS', '2024', '', 'Ya'], ['', 'Bola Voli Mikasa', 'STOK', 'Olahraga', 'Gudang Olahraga', 'Mikasa MVA200', 'buah', '12', 'Baik', 'Yayasan', '2025', '', 'Ya']],
-      peta: { kodeBarang: ['kode barang (opsional)', 'kode barang', 'kode'], namaBarang: ['nama barang', 'nama'], tipe: ['tipe (unit/stok)', 'tipe'], kategori: ['kategori'], lokasi: ['lokasi', 'ruangan'],
-        merekSpesifikasi: ['merek/spesifikasi', 'merek', 'merk'], satuan: ['satuan'], jumlah: ['jumlah'], kondisi: ['kondisi (baik/rusak)', 'kondisi'], sumberPerolehan: ['sumber perolehan', 'sumber'], tahunPerolehan: ['tahun'], keterangan: ['keterangan'], bisaDipinjam: ['bisa dipinjam (ya/tidak)', 'bisa dipinjam'] } }
+    // Template inventaris: TANPA Kode Barang / Tersedia / Status / Bisa Dipinjam / Dipinjam (kali) — kode dibuat otomatis saat diunggah
+    INVENTARIS: { kolom: ['Nama Barang *', 'Tipe *', 'Kategori *', 'Lokasi / Ruang *', 'Merek / Spesifikasi', 'Satuan', 'Jumlah *', 'Kondisi', 'Sumber Perolehan', 'Tahun Perolehan', 'Keterangan'],
+      peta: { kodeBarang: ['kode barang', 'kode'], namaBarang: ['nama barang', 'nama'], tipe: ['tipe'], kategori: ['kategori'], lokasi: ['lokasi / ruang', 'lokasi', 'ruang', 'ruangan'],
+        merekSpesifikasi: ['merek / spesifikasi', 'merek/spesifikasi', 'merek', 'merk'], satuan: ['satuan'], jumlah: ['jumlah'], kondisi: ['kondisi'], sumberPerolehan: ['sumber perolehan', 'sumber'],
+        tahunPerolehan: ['tahun perolehan', 'tahun'], keterangan: ['keterangan'], bisaDipinjam: ['bisa dipinjam'] } }
   };
   A.unduhTemplate = function (jenis) {
-    var petunjuk = [['PETUNJUK PENGISIAN — SIM-SARPRAS SMA TRIGUNA'], [''], ['1. Isi data mulai baris ke-2 (baris 1 = judul kolom, jangan diubah).'], ['2. Kolom bertanda wajib: Nama Lengkap (dan Kelas untuk siswa) / Nama Barang.'],
-      ['3. NIS/NIP diformat teks agar angka 0 di depan tidak hilang.'], ['4. Data yang sama (NIS/NIP sama) akan DIPERBARUI, bukan digandakan.'], ['5. Simpan sebagai .xlsx lalu unggah lewat tombol "Unggah Excel".']];
-    if (jenis === 'PEMINJAM') return Excel.unduh('Template_Data_Peminjam_SIM-SARPRAS.xlsx', [
-      { name: 'SISWA', aoa: [TPL.SISWA.kolom].concat(TPL.SISWA.contoh), widths: [14, 32, 12], textCols: [0] },
-      { name: 'GURU', aoa: [TPL.GURU.kolom].concat(TPL.GURU.contoh), widths: [22, 34], textCols: [0] }, { name: 'PETUNJUK', aoa: petunjuk, widths: [90] }]);
-    return Excel.unduh('Template_Inventaris_SIM-SARPRAS.xlsx', [{ name: 'INVENTARIS', aoa: [TPL.INVENTARIS.kolom].concat(TPL.INVENTARIS.contoh), widths: [18, 30, 14, 16, 18, 22, 8, 8, 16, 16, 7, 20, 18], textCols: [0, 10] },
-      { name: 'PETUNJUK', aoa: petunjuk.concat([['6. Tipe UNIT dengan Jumlah 3 → dibuat 3 kode terpisah. Tipe STOK → 1 kode berisi jumlah.'], ['7. Kategori/lokasi yang belum ada akan dibuat otomatis.']]), widths: [90] }]);
+    if (jenis === 'PEMINJAM') {
+      var petunjuk = [['PETUNJUK PENGISIAN — SIM-SARPRAS SMA TRIGUNA'], [''], ['1. Isi data mulai baris ke-2 (baris 1 = judul kolom, jangan diubah).'], ['2. Kolom wajib: Nama Lengkap (dan Kelas untuk siswa).'],
+        ['3. NIS/NIP diformat teks agar angka 0 di depan tidak hilang.'], ['4. Data yang sama (NIS/NIP sama) akan DIPERBARUI, bukan digandakan.'], ['5. Simpan sebagai .xlsx lalu unggah lewat tombol "Unggah Excel".']];
+      return Excel.unduh('Template_Data_Peminjam_SIM-SARPRAS.xlsx', [
+        { name: 'SISWA', aoa: [TPL.SISWA.kolom].concat(TPL.SISWA.contoh), widths: [14, 32, 12], textCols: [0] },
+        { name: 'GURU', aoa: [TPL.GURU.kolom].concat(TPL.GURU.contoh), widths: [22, 34], textCols: [0] }, { name: 'PETUNJUK', aoa: petunjuk, widths: [90] }]);
+    }
+    // Inventaris: dropdown diisi dari data aplikasi saat ini (kategori & ruang aktif) + pilihan baku form Tambah Barang
+    return S.Store.load('master.list', {}, { force: true, batch: false }).then(function (m) {
+      if (!m) throw new Error('Data kategori/lokasi belum termuat.');
+      var kat = m.kategori.filter(function (k) { return k.aktif; }).map(function (k) { return k.nama; }).sort(function (a, b) { return a.localeCompare(b); });
+      var lok = m.lokasi.filter(function (k) { return k.aktif; }).map(function (k) { return k.nama; }).sort(function (a, b) { return a.localeCompare(b); });
+      if (!kat.length || !lok.length) throw new Error('Tambahkan minimal 1 kategori dan 1 ruang terlebih dahulu.');
+      var V = [
+        { col: 0, type: 'teks', min: 2, max: 150, judul: 'Nama barang', pesan: 'Nama barang wajib diisi (2–150 karakter).', judulPrompt: 'Nama Barang', prompt: 'Contoh: Proyektor Epson EB-X51. Kode barang dibuat otomatis saat diunggah.' },
+        { col: 1, list: 'TIPE', judul: 'Tipe tidak valid', pesan: 'Pilih UNIT atau STOK dari daftar.', judulPrompt: 'Tipe', prompt: 'UNIT = 1 QR per buah (laptop, proyektor). STOK = 1 QR untuk jumlah banyak (bola, kursi).' },
+        { col: 2, list: 'KATEGORI', judul: 'Kategori tidak valid', pesan: 'Pilih kategori dari daftar. Kategori baru ditambahkan dulu di aplikasi (menu Kategori & Lokasi).', judulPrompt: 'Kategori', prompt: 'Pilih dari daftar.' },
+        { col: 3, list: 'LOKASI', judul: 'Lokasi tidak valid', pesan: 'Pilih ruang dari daftar. Ruang baru ditambahkan dulu di aplikasi (menu Kategori & Lokasi → Tambah Ruang), lalu unduh ulang template.', judulPrompt: 'Lokasi / Ruang', prompt: 'Pilih dari daftar.' },
+        { col: 5, list: 'SATUAN', judul: 'Satuan tidak valid', pesan: 'Pilih satuan dari daftar.', judulPrompt: 'Satuan', prompt: 'Pilih dari daftar (kosong = unit untuk UNIT, buah untuk STOK).' },
+        { col: 6, type: 'whole', min: 1, max: 100000, judul: 'Jumlah tidak valid', pesan: 'Isi angka bulat minimal 1.', judulPrompt: 'Jumlah', prompt: 'UNIT berjumlah 3 → dibuat 3 kode terpisah. STOK berjumlah 12 → 1 kode berisi 12.' },
+        { col: 7, list: 'KONDISI', judul: 'Kondisi tidak valid', pesan: 'Pilih Baik atau Rusak.', judulPrompt: 'Kondisi', prompt: 'Kosong = Baik.' },
+        { col: 8, list: 'SUMBER', judul: 'Sumber tidak valid', pesan: 'Pilih sumber perolehan dari daftar.', judulPrompt: 'Sumber Perolehan', prompt: 'Pilih dari daftar.' },
+        { col: 9, type: 'whole', min: 1950, max: 2100, judul: 'Tahun tidak valid', pesan: 'Isi tahun 4 angka, mis. 2024.', judulPrompt: 'Tahun', prompt: 'Contoh: 2024' }
+      ];
+      var petunjuk = [['PETUNJUK PENGISIAN TEMPLATE INVENTARIS — SIM-SARPRAS SMA TRIGUNA'], [''],
+        ['1. Isi data di sheet INVENTARIS mulai baris ke-2. Jangan mengubah, menghapus, atau memindah judul kolom.'],
+        ['2. Kolom Tipe, Kategori, Lokasi / Ruang, Satuan, Kondisi, dan Sumber Perolehan WAJIB dipilih dari dropdown (klik sel → tanda ▼).'],
+        ['3. Kolom bertanda * wajib diisi: Nama Barang, Tipe, Kategori, Lokasi / Ruang, Jumlah.'],
+        ['4. Kode barang TIDAK perlu diisi — dibuat otomatis saat file diunggah (mis. SAR-ELK-0001).'],
+        ['5. Tipe UNIT dengan Jumlah 3 → dibuat 3 kode terpisah (3 label QR). Tipe STOK → 1 kode berisi jumlah tersebut.'],
+        ['6. Ruang/kategori belum ada di dropdown? Tambahkan dulu di aplikasi (Kategori & Lokasi → Tambah Ruang), lalu UNDUH ULANG template ini.'],
+        ['7. Hindari menyalin-tempel (copy-paste) dari file lain ke kolom dropdown — tempelan bisa melewati pemeriksaan dropdown.'],
+        ['8. Barang dengan nama + ruang yang sama dengan data yang sudah ada akan DIPERBARUI, bukan digandakan.'],
+        ['9. Simpan sebagai .xlsx → menu Inventaris → Impor Excel → periksa pratinjau → Konfirmasi Impor.'], [''],
+        ['CONTOH PENGISIAN (jangan disalin ke sheet INVENTARIS):'],
+        ['Proyektor Epson EB-X51 | UNIT | ' + kat[0] + ' | ' + lok[0] + ' | Epson EB-X51 | unit | 2 | Baik | BOS | 2024 | —'],
+        ['Bola Voli Mikasa | STOK | ' + (kat[1] || kat[0]) + ' | ' + (lok[1] || lok[0]) + ' | Mikasa MVA200 | buah | 12 | Baik | Yayasan | 2025 | —'], [''],
+        ['Template dibuat: ' + fmt.tglJam(new Date()) + ' · ' + kat.length + ' kategori · ' + lok.length + ' ruang']];
+      return XlsxTemplate.unduh('Template_Inventaris_SIM-SARPRAS.xlsx', [
+        { name: 'INVENTARIS', header: TPL.INVENTARIS.kolom, rows: [], widths: [34, 10, 22, 26, 26, 10, 9, 10, 18, 15, 30], textCols: [0, 4, 10], validations: V, freeze: true, maxRow: 2000 },
+        { name: 'PETUNJUK', header: ['PETUNJUK'], rows: petunjuk.slice(1), widths: [120] }
+      ], { TIPE: ['UNIT', 'STOK'], KATEGORI: kat, LOKASI: lok, SATUAN: A.SATUAN, KONDISI: ['Baik', 'Rusak'], SUMBER: A.SUMBER });
+    });
   };
+  /** Samakan judul kolom: abaikan huruf besar, tanda *, keterangan dalam kurung, spasi ganda. */
+  function normHdr(h) { return String(h).replace(/\*/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim().toLowerCase(); }
   function petakan(rows, peta) {
     return rows.map(function (r) {
-      var o = {}, keys = Object.keys(r);
+      var o = {}, keys = Object.keys(r), norm = keys.map(normHdr);
       Object.keys(peta).forEach(function (f) {
-        for (var i = 0; i < peta[f].length; i++) { var k = keys.filter(function (x) { return x.trim().toLowerCase() === peta[f][i]; })[0]; if (k !== undefined) { o[f] = String(r[k]).trim(); break; } }
+        for (var i = 0; i < peta[f].length; i++) { var j = norm.indexOf(peta[f][i]); if (j >= 0) { o[f] = String(r[keys[j]]).trim(); break; } }
       });
       return o;
     }).filter(function (o) { return Object.keys(o).some(function (k) { return o[k]; }); });
@@ -136,13 +206,13 @@
         var jobs = [];
         Object.keys(wb).forEach(function (nama) {
           var n = nama.toUpperCase(), rows = wb[nama];
-          if (!rows.length || n === 'PETUNJUK') return;
+          if (!rows.length || n === 'PETUNJUK' || n === 'DAFTAR') return;
           var hdr = Object.keys(rows[0]).join('|').toLowerCase();
           var target = jenis === 'INVENTARIS' ? 'INVENTARIS' : (n.indexOf('GURU') >= 0 || /nip|kode guru/.test(hdr) ? 'GURU' : 'SISWA');
           var data = petakan(rows, TPL[target].peta);
           if (data.length) jobs.push({ sheet: nama, target: target, rows: data });
         });
-        if (!jobs.length) { S.toast('Tidak ada data yang cocok dengan template. Unduh template dulu.', 'error'); return; }
+        if (!jobs.length) { S.toast('Tidak ada data yang cocok dengan template. Unduh template dulu' + (jenis === 'INVENTARIS' ? ' (Inventaris → Unduh Template).' : '.'), 'error'); return; }
         pratinjau(jobs);
       }).catch(function (e) { S.toast('File tidak bisa dibaca: ' + e.message, 'error'); });
     };
@@ -151,7 +221,7 @@
       var m = S.modal({ title: 'Impor Excel', wide: true, sticky: true, body: '<div class="stepbar"><span class="on"><i>1</i>Unggah</span><span class="on"><i>2</i>Pratinjau</span><span><i>3</i>Selesai</span></div><div id="hasil">' + S.skeleton(4) + '</div>',
         foot: '<button class="btn" data-c>Batal</button><button class="btn btn-navy" data-ok disabled>' + ic('check', 'sm') + 'Konfirmasi Impor</button>' });
       m.el.querySelector('[data-c]').onclick = m.close;
-      Promise.all(jobs.map(function (j) { return S.api('import.rows', { target: j.target, rows: j.rows, dryRun: true }); })).then(function (res) {
+      Promise.all(jobs.map(function (j) { return S.api('import.rows', { target: j.target, rows: j.rows, dryRun: true, strict: j.target === 'INVENTARIS' }); })).then(function (res) {
         var gagal = res.filter(function (r) { return !r.success; });
         if (gagal.length) { $('#hasil', m.el).innerHTML = '<div class="errbox">' + ic('alert') + esc(gagal[0].message) + '</div>'; return; }
         $('#hasil', m.el).innerHTML = jobs.map(function (j, i) {
@@ -164,7 +234,7 @@
         }).join('');
         var ok = m.el.querySelector('[data-ok]'); ok.disabled = false;
         ok.onclick = function () {
-          S.busy(ok, Promise.all(jobs.map(function (j, i) { var c = $('[data-non="' + i + '"]', m.el); return S.api('import.rows', { target: j.target, rows: j.rows, nonaktifkanTidakAda: !!(c && c.checked) }); })), 'Mengimpor…').then(function (rs) {
+          S.busy(ok, Promise.all(jobs.map(function (j, i) { var c = $('[data-non="' + i + '"]', m.el); return S.api('import.rows', { target: j.target, rows: j.rows, strict: j.target === 'INVENTARIS', nonaktifkanTidakAda: !!(c && c.checked) }); })), 'Mengimpor…').then(function (rs) {
             var e = rs.filter(function (r) { return !r.success; });
             if (e.length) { S.toast(e[0].message, 'error'); return; }
             S.Store.stale(['peminjam', 'inventaris', 'master', 'public', 'dashboard']);
